@@ -87,9 +87,41 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 # Admin UI Routes
 @app.get("/admin", response_class=HTMLResponse)
-def view_admin_panel(request: Request, db: Session = Depends(get_db), auth: str = Depends(authenticate_admin)):
-    users = db.query(models.User).all()
-    return templates.TemplateResponse("admin.html", {"request": request, "users": users})
+async def view_admin_panel(
+    request: Request, 
+    db: Session = Depends(get_db), 
+    auth: str = Depends(authenticate_admin),
+    search: str | None = None,
+    page: int = 1
+):
+    page_size = 10
+    query = db.query(models.User)
+    
+    if search:
+        query = query.filter(
+            (models.User.id.contains(search)) | 
+            (models.User.device_id.contains(search))
+        )
+    
+    total_users = query.count()
+    total_pages = (total_users + page_size - 1) // page_size
+    
+    # Ensure page is within bounds
+    if page < 1:
+        page = 1
+    elif page > total_pages and total_pages > 0:
+        page = total_pages
+        
+    users = query.offset((page - 1) * page_size).limit(page_size).all()
+    
+    return templates.TemplateResponse("admin.html", {
+        "request": request, 
+        "users": users,
+        "search": search or "",
+        "page": page,
+        "total_pages": total_pages,
+        "total_users": total_users
+    })
 
 @app.post("/admin/users/add", dependencies=[Depends(authenticate_admin)])
 def form_create_user(
