@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Form
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -15,6 +17,19 @@ app = FastAPI(title="Auth & Admin Service")
 # Create templates directory if it doesn't exist
 os.makedirs("templates", exist_ok=True)
 templates = Jinja2Templates(directory="templates")
+
+security = HTTPBasic()
+
+def authenticate_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    is_correct_username = secrets.compare_digest(credentials.username, "admin")
+    is_correct_password = secrets.compare_digest(credentials.password, "kS2dcKMd134")
+    if not (is_correct_username and is_correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 def get_db():
     db = SessionLocal()
@@ -55,11 +70,11 @@ def login(request: schemas.AuthRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Unauthorized: Device ID mismatch")
 
 # Admin APIs (JSON)
-@app.get("/api/admin/users", response_model=list[schemas.UserResponse])
+@app.get("/api/admin/users", response_model=list[schemas.UserResponse], dependencies=[Depends(authenticate_admin)])
 def get_users(db: Session = Depends(get_db)):
     return db.query(models.User).all()
 
-@app.post("/api/admin/users", response_model=schemas.UserResponse)
+@app.post("/api/admin/users", response_model=schemas.UserResponse, dependencies=[Depends(authenticate_admin)])
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user.id).first()
     if db_user:
@@ -72,11 +87,11 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 # Admin UI Routes
 @app.get("/admin", response_class=HTMLResponse)
-def view_admin_panel(request: Request, db: Session = Depends(get_db)):
+def view_admin_panel(request: Request, db: Session = Depends(get_db), auth: str = Depends(authenticate_admin)):
     users = db.query(models.User).all()
     return templates.TemplateResponse("admin.html", {"request": request, "users": users})
 
-@app.post("/admin/users/add")
+@app.post("/admin/users/add", dependencies=[Depends(authenticate_admin)])
 def form_create_user(
     request: Request,
     id: str = Form(...),
@@ -90,7 +105,7 @@ def form_create_user(
         db.commit()
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/admin/users/delete")
+@app.post("/admin/users/delete", dependencies=[Depends(authenticate_admin)])
 def form_delete_user(
     request: Request,
     id: str = Form(...),
@@ -102,7 +117,7 @@ def form_delete_user(
         db.commit()
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/admin/users/clear_device")
+@app.post("/admin/users/clear_device", dependencies=[Depends(authenticate_admin)])
 def form_clear_device(
     request: Request,
     id: str = Form(...),
@@ -114,7 +129,7 @@ def form_clear_device(
         db.commit()
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/admin/users/edit")
+@app.post("/admin/users/edit", dependencies=[Depends(authenticate_admin)])
 def form_edit_user(
     request: Request,
     old_id: str = Form(...),
