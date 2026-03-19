@@ -113,3 +113,25 @@ def form_clear_device(
         db_user.device_id = None
         db.commit()
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/admin/users/edit")
+def form_edit_user(
+    request: Request,
+    old_id: str = Form(...),
+    new_id: str = Form(...),
+    new_device_id: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    db_user = db.query(models.User).filter(models.User.id == old_id).first()
+    if db_user:
+        # If ID is changing, check if new ID already exists
+        if old_id != new_id:
+            existing_user = db.query(models.User).filter(models.User.id == new_id).first()
+            if existing_user:
+                # In a real app, you'd show an error message. For now, just skip.
+                return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+        
+        db_user.id = new_id
+        db_user.device_id = new_device_id if new_device_id else None
+        db.commit()
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
